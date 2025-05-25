@@ -49,7 +49,9 @@ function EditChords() {
 
   return (
     <div>
-      <h2>{song.title}</h2>
+      <h2>Editar cifra</h2>
+      <h3>{song.title}<br/>
+      <i>{song.authors}</i></h3>
       <textarea
         value={chords}
         onChange={(e) => setChords(e.target.value)}

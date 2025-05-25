@@ -49,14 +49,21 @@ function EditLyrics() {
 
   return (
     <div>
-      <h2>{song.title}</h2>
-      <input
+      <h2>Editar letra</h2>
+      <h3>{song.title}</h3>
+      <span><b>Autor:</b>&nbsp;</span><input
         type="text"
         value={authors}
         onChange={(e) => setAuthors(e.target.value)}
-        placeholder="Autoria"
+        placeholder="inserir nome"
         style={{
-          width: '96.5%',
+          width: 'calc(100% - 58pt)', // Adjust width to account for the label
+          border: 'none',
+          outline: 'none',
+          borderBottom: '1px solid #ccc',
+          padding: '4px',
+          marginLeft: '5px', // Add some space between label and input
+          verticalAlign: 'baseline' // Align with the text
         }}
       />
       <textarea
