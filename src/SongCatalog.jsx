@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react'; // Added useMemo
 import { useNavigate } from 'react-router-dom';
 import { db } from './firebase.config.js';
-import { collection, addDoc, deleteDoc, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, deleteDoc, getDocs, doc, updateDoc, setDoc } from 'firebase/firestore'; // Added setDoc
 
 import './SongCatalog.css';
 
@@ -11,35 +11,28 @@ function SongCatalog() {
   const [completeSongs, setCompleteSongs] = useState([]);
   const [songTitle, setSongTitle] = useState('');
   
+  // State for songs deleted from DB that can be undone in the current session
+  const [songsAwaitingUndo, setSongsAwaitingUndo] = useState([]); 
+
   const [editId, setEditId] = useState(null);
   const [editSongTitle, setEditSongTitle] = useState('');
 
   const navigate = useNavigate();
-
   const songsCollectionRef = collection(db, 'songs');
 
   const addSong = async () => {
     try {
-      if (!songTitle.trim()) return; // Prevent adding empty titles
+      if (!songTitle.trim()) return;
       await addDoc(songsCollectionRef, {
         title: songTitle,
         lyrics: '',
         chords: '',
       });
-      fetchSongs();
+      fetchSongs(); // Fetch songs to include the new one
       setSongTitle('');
+      // setSongsAwaitingUndo([]); // Clear any pending undos if a new song is added
     } catch (error) {
       console.error("Error adding song: ", error);
-    }
-  };
-
-  const removeSong = async (id) => {
-    const songDoc = doc(db, 'songs', id);
-    try {
-      await deleteDoc(songDoc);
-      fetchSongs();
-    } catch (error) {
-      console.error("Error removing song: ", error);
     }
   };
 
@@ -68,6 +61,47 @@ function SongCatalog() {
     setLyricsNoChordsSongs(lyricsNoChords.sort((a, b) => a.title.localeCompare(b.title)));
     setCompleteSongs(complete.sort((a, b) => a.title.localeCompare(b.title)));
   };
+  
+  useEffect(() => {
+    fetchSongs();
+  }, []);
+
+  // Handles immediate deletion from Firestore and adds to list for potential undo
+  const handleDeleteSong = async (songToDelete, categoryKey) => {
+    if (!songToDelete || !songToDelete.id) {
+      console.error("Invalid song object passed to handleDeleteSong:", songToDelete);
+      return;
+    }
+    try {
+      const songDoc = doc(db, 'songs', songToDelete.id);
+      await deleteDoc(songDoc);
+      // Add to songsAwaitingUndo, ensuring no duplicates if somehow clicked fast
+      setSongsAwaitingUndo(prev => {
+        if (prev.find(s => s.id === songToDelete.id)) return prev;
+        return [...prev, { ...songToDelete, originalCategoryKey: categoryKey }];
+      });
+      fetchSongs(); // Refresh the base lists from Firestore
+    } catch (error) {
+      console.error(`Error deleting song ${songToDelete.id}: `, error);
+    }
+  };
+
+  // Handles re-adding a specific song to Firestore
+  const handleUndoDelete = async (songIdToUndo) => {
+    const songToRestore = songsAwaitingUndo.find(s => s.id === songIdToUndo);
+    if (!songToRestore) return;
+
+    try {
+      const songDocRef = doc(db, 'songs', songToRestore.id);
+      const { originalCategoryKey, ...songData } = songToRestore; // Exclude temporary key
+      await setDoc(songDocRef, songData); // Re-add with original data and ID
+      
+      setSongsAwaitingUndo(prev => prev.filter(s => s.id !== songIdToUndo));
+      fetchSongs(); // Refresh lists, song will reappear normally
+    } catch (error) {
+      console.error(`Error undoing delete for song ${songIdToUndo}: `, error);
+    }
+  };
 
   const updateSongTitle = async (id) => {
     const songDoc = doc(db, 'songs', id);
@@ -75,14 +109,34 @@ function SongCatalog() {
       await updateDoc(songDoc, { title: editSongTitle });
       fetchSongs();
       setEditId(null);
+      // setSongsAwaitingUndo([]); // Clear undos if a song is edited
     } catch (error) {
       console.error("Error updating song title: ", error);
     }
   };
 
-  useEffect(() => {
-    fetchSongs();
-  }, []);
+  // Helper to generate display lists, incorporating songsAwaitingUndo
+  const getDisplayList = (baseList, categoryKey) => {
+    let displayList = [...baseList];
+    const undoableSongsInThisCategory = songsAwaitingUndo.filter(
+      s => s.originalCategoryKey === categoryKey
+    );
+
+    undoableSongsInThisCategory.forEach(undoableSong => {
+      if (!displayList.find(s => s.id === undoableSong.id)) {
+        displayList.push(undoableSong);
+      }
+    });
+    
+    return displayList.sort((a, b) => a.title.localeCompare(b.title));
+  };
+
+  const sections = useMemo(() => [
+    { title: 'Adicionar letra', baseSongs: noLyricsNoChordsSongs, categoryKey: 'noLyricsNoChords' },
+    { title: 'Adicionar cifra', baseSongs: lyricsNoChordsSongs, categoryKey: 'lyricsNoChords' },
+    { title: 'Completas', baseSongs: completeSongs, categoryKey: 'complete' },
+  ], [noLyricsNoChordsSongs, lyricsNoChordsSongs, completeSongs]);
+
 
   return (
     <>
@@ -104,49 +158,57 @@ function SongCatalog() {
         }}>+</button>
       </div>
 
-      {[
-        { title: 'Adicionar letra', songs: noLyricsNoChordsSongs },
-        { title: 'Adicionar cifra', songs: lyricsNoChordsSongs },
-        { title: 'Completas', songs: completeSongs },
-      ].map(section => (
-        <div key={section.title}>
-          <h2>{section.title} ({section.songs.length})</h2>
-          {section.songs.length === 0 ? (
-            <p>Nenhuma música nesta seção.</p>
-          ) : (
-            <ul className="song-list">
-              {section.songs.map((song) => (
-                <li key={song.id}>
-                  {editId === song.id ? (
-                    <>
-                      <input
-                        type="text"
-                        value={editSongTitle}
-                        onChange={(e) => setEditSongTitle(e.target.value)}
-                      />
-                      <button onClick={() => updateSongTitle(song.id)}>Salvar</button>
-                      <button onClick={() => setEditId(null)} className='red-button'>Cancelar</button>
-                    </>
-                  ) : (
-                    <>
-                      <span>{song.title}</span>
-                      <button
-                        onClick={() => {
-                          setEditId(song.id);
-                          setEditSongTitle(song.title);
-                        }}
-                      >Nome</button>
-                      <button onClick={() => navigate(`/edit-lyrics/${song.id}`)}>Letra</button>
-                      <button onClick={() => navigate(`/edit-chords/${song.id}`)}>Cifra</button>
-                      <button onClick={() => removeSong(song.id)} className='red-button'>×</button>
-                    </>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      ))}
+      {sections.map(section => {
+        const displaySongs = getDisplayList(section.baseSongs, section.categoryKey);
+        return (
+          <div key={section.title}>
+            <h2>{section.title} ({displaySongs.length})</h2>
+            {displaySongs.length === 0 ? (
+              <p>Nenhuma música nesta seção.</p>
+            ) : (
+              <ul className="song-list">
+                {displaySongs.map((song) => {
+                  const isAwaitingUndo = songsAwaitingUndo.some(s => s.id === song.id);
+                  return (
+                    <li key={song.id}>
+                      {editId === song.id && !isAwaitingUndo ? (
+                        <>
+                          <input
+                            type="text"
+                            value={editSongTitle}
+                            onChange={(e) => setEditSongTitle(e.target.value)}
+                          />
+                          <button onClick={() => updateSongTitle(song.id)}>Salvar</button>
+                          <button onClick={() => setEditId(null)} className='red-button'>Cancelar</button>
+                        </>
+                      ) : (
+                        <>
+                          <span>{song.title}</span>
+                          {isAwaitingUndo ? (
+                            <button onClick={() => handleUndoDelete(song.id)} className='action-button'>+</button>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => {
+                                  setEditId(song.id);
+                                  setEditSongTitle(song.title);
+                                }}
+                              >Nome</button>
+                              <button onClick={() => navigate(`/edit-lyrics/${song.id}`)}>Letra</button>
+                              <button onClick={() => navigate(`/edit-chords/${song.id}`)}>Cifra</button>
+                              <button onClick={() => handleDeleteSong(song, section.categoryKey)} className='red-button'>×</button>
+                            </>
+                          )}
+                        </>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        );
+      })}
     </>
   );
 }
