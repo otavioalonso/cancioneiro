@@ -64,36 +64,6 @@ button.red-button:hover {
   background-color: #b5300f;
 }
 
-ul {
-  list-style-type: none;
-  padding: 0;
-}
-
-li {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background-color: #f1f1f1;
-  padding: 10px;
-  border-radius: 4px;
-  margin: 10px 0;
-}
-
-li span {
-  flex-grow: 1;
-}
-
-li a {
-  margin-right: 10px;
-  text-decoration: none;
-  color: #007BFF;
-  transition: color 0.3s ease;
-}
-
-li a:hover {
-  color: #0056b3;
-}
-
 textarea {
   width: 98%;
   padding: 10px;
