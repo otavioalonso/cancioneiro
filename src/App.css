@@ -74,3 +74,24 @@ textarea {
   font-size: 16px;
   resize: vertical;
 }
+
+/* Add a media query for smaller screens */
+@media (max-width: 600px) {
+  #root {
+    padding: 10px; /* Reduce padding on smaller screens */
+  }
+
+  .logo {
+    height: 4em; /* Smaller logo on mobile */
+    padding: 1em;
+  }
+
+  .card {
+    padding: 1em; /* Reduce card padding */
+  }
+
+  button {
+    padding: 0.5em 1em; /* Adjust button padding for easier tapping */
+    font-size: 0.9em;
+  }
+}
